@@ -5,16 +5,32 @@ from lingua import LanguageDetectorBuilder
 import argostranslate.package as pkg
 import argostranslate.translate as tr
 
+# prebuild the language detector to save time for repeated translations
 detector = LanguageDetectorBuilder.from_all_languages().build()
+
+# set tesseract path
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+# hardcode a target language to translate to for now
+target_language = "en"
+
+# 3 letter to ISO language dictionary
+lang_dictionary = {"en": "eng", "ru": "rus", "fr": "fra"} 
+
+# hardcode region for now
+region = {"left": 0, "top": 100, "width": 800, "height": 600}
+
+available_alphabets = ["eng", "rus"]
+available_alphabets_string = "+".join(available_alphabets)
+print(available_alphabets_string)
+
+# OCR
 def capture(region):
-    # region = {"left": 100, "top": 200, "width": 600, "height": 300}
     with mss.MSS() as sct:
         shot = sct.grab(region)
         return np.array(shot)[:, :, :3]   # drop the alpha channel, keep BGR
 
-
+# Image processing for clearer text
 def preprocess(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
@@ -23,6 +39,7 @@ def preprocess(img):
         bw = cv2.bitwise_not(bw)
     return bw
 
+# function to attempt to crop image to text region for more accurate reading // not needed currently
 """def crop_to_text(bw, pad=20):
     ys, xs = np.where(bw < 128)          # dark pixels = ink
     if len(xs) == 0:
@@ -31,10 +48,12 @@ def preprocess(img):
     return cv2.copyMakeBorder(crop, pad, pad, pad, pad,
                               cv2.BORDER_CONSTANT, value=255)
 """
-def read_text(img, langs="eng+rus"):
+# read the text from the image, pass installed alphabets / languages in 
+def read_text(img, langs):
+    
     return pytesseract.image_to_string(img, lang=langs, config="--psm 6").strip()
 
-
+# detect the language of the text
 def detect(text):
     lang = detector.detect_language_of(text)
     if lang is None:
@@ -64,15 +83,14 @@ def translate(text, src, tgt):
 
 
 
-# hardcode region
-region = {"left": 0, "top": 100, "width": 800, "height": 600}
+
 img = capture(region)
 img = preprocess(img)
 #img = crop_to_text(img)
 cv2.imwrite("debug.png", img)
-text = read_text(img)
+text = read_text(img, available_alphabets_string)
 print(text)
-lang = detect(read_text(img))
+lang = detect(read_text(img, available_alphabets_string))
 print(lang)
-ensure_model(lang[0], "eng")
-print(translate(text, lang[0], "eng"))
+ensure_model(lang[0], target_language)
+print(translate(text, lang[0], target_language))
