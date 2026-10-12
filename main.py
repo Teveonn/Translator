@@ -5,24 +5,36 @@ from lingua import LanguageDetectorBuilder
 import argostranslate.package as pkg
 import argostranslate.translate as tr
 
-# prebuild the language detector to save time for repeated translations
-detector = LanguageDetectorBuilder.from_all_languages().build()
+DEBUG = True   # set to False to stop writing debug.png
+
+# hardcode region for now
+REGION = {"left": 0, "top": 100, "width": 800, "height": 600}
+
+# hardcode a target language to translate to for now
+TARGET_LANG = "en"
+
+# below this confidence the detected language is treated as unreliable
+MIN_CONFIDENCE = 0.5
 
 # set tesseract path
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# hardcode a target language to translate to for now
-target_language = "en"
+from lingua import Language, LanguageDetectorBuilder
 
-# 3 letter to ISO language dictionary
-lang_dictionary = {"en": "eng", "ru": "rus", "fr": "fra"} 
+# One place to add a language: ISO 639-1 code -> (lingua enum, tesseract code).
+# Only list languages that appeared in --list-langs.
+LANGUAGES = {
+    "en": (Language.ENGLISH, "eng"),
+    "ru": (Language.RUSSIAN, "rus"),
+    # "fr": (Language.FRENCH, "fra"),   # uncomment once fra is installed
+}
+TESSERACT_LANGS = "+".join(tess for _, tess in LANGUAGES.values())
 
-# hardcode region for now
-region = {"left": 0, "top": 100, "width": 800, "height": 600}
+# prebuild the language detector to save time for repeated translations
+detector = LanguageDetectorBuilder.from_languages(
+    *[lingua_lang for lingua_lang, _ in LANGUAGES.values()]
+).build()
 
-available_alphabets = ["eng", "rus"]
-available_alphabets_string = "+".join(available_alphabets)
-print(available_alphabets_string)
 
 # OCR
 def capture(region):
@@ -39,18 +51,8 @@ def preprocess(img):
         bw = cv2.bitwise_not(bw)
     return bw
 
-# function to attempt to crop image to text region for more accurate reading // not needed currently
-"""def crop_to_text(bw, pad=20):
-    ys, xs = np.where(bw < 128)          # dark pixels = ink
-    if len(xs) == 0:
-        return bw
-    crop = bw[ys.min():ys.max()+1, xs.min():xs.max()+1]
-    return cv2.copyMakeBorder(crop, pad, pad, pad, pad,
-                              cv2.BORDER_CONSTANT, value=255)
-"""
 # read the text from the image, pass installed alphabets / languages in 
-def read_text(img, langs):
-    
+def read_text(img, langs=TESSERACT_LANGS):
     return pytesseract.image_to_string(img, lang=langs, config="--psm 6").strip()
 
 # detect the language of the text
@@ -76,21 +78,42 @@ def ensure_model(src, tgt):
     pkg.install_from_path(match.download())
     return True
 
+# returns the translation, or None if no model exists for this language pair
 def translate(text, src, tgt):
     if not ensure_model(src, tgt):
-        return f"[No {src}->{tgt} model available]"
+        return None
     return tr.translate(text, src, tgt)
 
 
+def run(region=REGION, target=TARGET_LANG):
+    img = preprocess(capture(region))
+    if DEBUG:
+        cv2.imwrite("debug.png", img)
 
+    text = read_text(img)
+    if not text:
+        return {"status": "no_text", "text": "", "src": None,
+                "conf": 0.0, "translation": None}
 
-img = capture(region)
-img = preprocess(img)
-#img = crop_to_text(img)
-cv2.imwrite("debug.png", img)
-text = read_text(img, available_alphabets_string)
-print(text)
-lang = detect(read_text(img, available_alphabets_string))
-print(lang)
-ensure_model(lang[0], target_language)
-print(translate(text, lang[0], target_language))
+    src, conf = detect(text)
+    result = {"text": text, "src": src, "conf": conf, "translation": None}
+
+    if src is None:
+        result["status"] = "undetected"
+    elif conf < MIN_CONFIDENCE:
+        result["status"] = "low_confidence"
+    elif src == target:
+        result["status"] = "same_language"
+        result["translation"] = text
+    else:
+        translation = translate(text, src, target)
+        result["translation"] = translation
+        result["status"] = "ok" if translation is not None else "no_model"
+
+    return result
+
+if __name__ == "__main__":
+    result = run()
+    print(result["status"], result["src"], f'{result["conf"]:.0%}')
+    print(result["text"])
+    print(result["translation"])
