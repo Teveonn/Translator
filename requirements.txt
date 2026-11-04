@@ -1,0 +1,12 @@
+# Screen capture. main.py uses mss.MSS, which first appeared in 10.2.0.
+mss>=10.2.0
+
+# Image preprocessing
+opencv-python
+numpy
+
+# OCR (also needs the Tesseract program installed separately; see README)
+pytesseract
+
+# Offline translation
+argostranslate
