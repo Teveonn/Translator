@@ -45,7 +45,7 @@ LANGUAGES = {
 1. **Clone the repository and create a virtual environment.**
 
    ```powershell
-   git clone <your-repo-url>
+   git clone https://github.com/Teveonn/Translator.git
    cd Translator
    python -m venv .venv
    .venv\Scripts\Activate.ps1
@@ -184,4 +184,4 @@ Add `.venv/`, `__pycache__/` and `debug.png` to `.gitignore`.
 
 ## License
 
-Add a license before publishing the repository (MIT is a common choice for small projects).
+MIT, see the LICENSE file
